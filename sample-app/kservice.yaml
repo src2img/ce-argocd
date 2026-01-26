@@ -1,0 +1,40 @@
+---
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: sample-app
+spec:
+  template:
+    metadata:
+      annotations:
+        autoscaling.knative.dev/maxScale: "10"
+        autoscaling.knative.dev/minScale: "0"
+        autoscaling.knative.dev/scale-down-delay: "0"
+        autoscaling.knative.dev/target: "100"
+      creationTimestamp: null
+    spec:
+      containerConcurrency: 100
+      containers:
+      - env:
+        - name: MY_ENV
+          value: new-value
+        image: icr.io/codeengine/helloworld
+        imagePullPolicy: Always
+        name: user-container
+        ports:
+        - containerPort: 8080
+          protocol: TCP
+        readinessProbe:	
+          successThreshold: 1	
+          tcpSocket:	
+            port: 0
+        resources:
+          limits:
+            cpu: "1"
+            ephemeral-storage: 4G
+            memory: 4G
+          requests:
+            cpu: "1"
+            ephemeral-storage: 4G
+            memory: 4G
+      timeoutSeconds: 300

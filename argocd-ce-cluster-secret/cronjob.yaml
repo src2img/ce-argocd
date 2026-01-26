@@ -1,0 +1,98 @@
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: argocd-bearertoken-rotator
+spec:
+  schedule: "*/30 * * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 0
+      template:
+        metadata:
+          labels:
+            app: argocd-bearertoken-rotator
+        spec:
+          serviceAccountName: argocd-token-rotator
+          restartPolicy: Never
+          containers:
+          - name: rotator
+            image: icr.io/codeengine/cecli
+            imagePullPolicy: IfNotPresent
+            env:
+            - name: NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: IBMCLOUD_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: ibmcloud-apikey
+                  key: apiKey
+            - name: IBMCLOUD_REGION
+              value: <YOUR_IBM_CLOUD_REGION>
+            - name: IBMCLOUD_RESOURCEGROUP
+              value: Default
+            - name: IBMCLOUD_CODEENGINE_PROJECT
+              value: <YOUR_PROJECT_NAME>
+            command:
+            - /bin/bash
+            - -c
+            args:
+            - |
+              set -euo pipefail
+
+              echo "[INFO] Installing jq and kubectl"
+              if ! command -v jq >/dev/null 2>&1; then
+                dnf install jq -y
+              fi
+              if ! command -v kubectl >/dev/null 2>&1; then
+                curl -fsSL "https://storage.googleapis.com/kubernetes-release/release/$(curl -fsSL https://storage.googleapis.com/kubernetes-release/release/stable.txt)/bin/linux/amd64/kubectl" -o /usr/local/bin/kubectl
+                chmod +x /usr/local/bin/kubectl
+              fi
+
+              echo "[INFO] Logging in IBM Cloud"
+              ibmcloud config --check-version=false
+              ibmcloud login -r "${IBMCLOUD_REGION}" -g "${IBMCLOUD_RESOURCEGROUP}"
+
+              echo "[INFO] Selecting Code Engine project"
+              ibmcloud ce project select --name "${IBMCLOUD_CODEENGINE_PROJECT}"
+
+              read -r projectId kubeconfig <<<"$(ibmcloud ce project current -o json | jq -r '[ .guid, .kube_config_file ] | @tsv')"
+
+              #echo "[DEBUG] projectId: ${projectId}"
+              #echo "[DEBUG] kubeconfig: ${kubeconfig}"
+
+              read -r namespace server token <<<"$(KUBECONFIG="${kubeconfig}" kubectl config view -o json | jq -r '[ .contexts[0].context.namespace, .clusters[0].cluster.server, .users[0].user."auth-provider".config."id-token" ] | @tsv')"
+
+              #echo "[DEBUG] namespace: ${namespace}"
+              #echo "[DEBUG] server: ${server}"
+              #echo "[DEBUG] token: ${token}"
+
+              echo "[INFO] Writing secret cluster-${projectId}"
+              cat <<EOF | kubectl apply --server-side -f -
+              apiVersion: v1
+              kind: Secret
+              metadata:
+                name: cluster-${projectId}
+                namespace: ${NAMESPACE}
+                annotations:
+                  managed-by: argocd.argoproj.io
+                labels:
+                  argocd.argoproj.io/secret-type: cluster
+              type: Opaque
+              stringData:
+                name: ${IBMCLOUD_CODEENGINE_PROJECT}
+                namespaces: ${namespace}
+                server: ${server}
+                config: |
+                  {
+                    "bearerToken": "${token}",
+                    "tlsClientConfig": {
+                      "insecure": false
+                    }
+                  }
+              EOF

@@ -1,0 +1,67 @@
+data:
+  resource.customizations.ignoreDifferences.serving.knative.dev_Service: |
+    jqPathExpressions:
+      - '.spec.template.spec.containers[].env[] | select(.name == "CE_SUBDOMAIN" or .name == "CE_PROJECT_ID" or .name == "CE_APP" or .name == "CE_DOMAIN" or .name == "CE_REGION" or .name == "CE_API_BASE_URL")'
+
+  resource.inclusions: |
+    - apiGroups:
+      - ""
+      kinds:
+      - ConfigMap
+      - Pod
+      - Secret
+      - Service
+      clusters:
+      - "*"
+
+    - apiGroups:
+      - apps
+      kinds:
+      - Deployment
+      - ReplicaSet
+      clusters:
+      - "*"
+
+    - apiGroups:
+      - codeengine.cloud.ibm.com
+      kinds:
+      - Function
+      - JobDefinition
+      - JobRun
+      - PersistentStorage
+      - VpeGatewayConnection
+      clusters:
+      - "*"
+
+    - apiGroups:
+      - serving.knative.dev
+      kinds:
+      - Configuration
+      - Revision
+      - Route
+      - Service
+      clusters:
+      - "*"
+
+    - apiGroups:
+      - shipwright.io
+      kinds:
+      - Build
+      - BuildRun
+      clusters:
+      - "*"
+
+    - apiGroups:
+      - sources.codeengine.cloud.ibm.com
+      kinds:
+      - CosSource
+      clusters:
+      - "*"
+
+    - apiGroups:
+      - sources.knative.dev
+      kinds:
+      - KafkaSource
+      - PingSource
+      clusters:
+      - "*"
